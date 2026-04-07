@@ -2,24 +2,22 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+from decimal import Decimal
 
-# Profile to extend User with balance
+# Profile - Extending User with Balance
 class Profile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
-    balance = models.DecimalField(max_digits=12, decimal_places=2, default='100000.00')
+    balance = models.DecimalField(max_digits=12, decimal_places=2, default='50000.00')
     
     def __str__(self):
-        return self.user.username
+        return f"{self.user.username} (${self.balance})"
 
 @receiver(post_save, sender=User)
-def create_user_profile(sender, instance, created, **kwargs):
+def create_profile(sender, instance, created, **kwargs):
     if created:
         Profile.objects.create(user=instance)
 
-@receiver(post_save, sender=User)
-def save_user_profile(sender, instance, **kwargs):
-    instance.profile.save()
-
+# Stock (name, price, change)
 class Stock(models.Model):
     symbol = models.CharField(max_length=10, unique=True)
     name = models.CharField(max_length=100)
@@ -28,8 +26,9 @@ class Stock(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.symbol} - {self.price}"
+        return f"{self.symbol} - ${self.price}"
 
+# Portfolio (user, stock, quantity)
 class Portfolio(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='portfolios')
     stock = models.ForeignKey(Stock, on_delete=models.CASCADE)
@@ -39,6 +38,7 @@ class Portfolio(models.Model):
     class Meta:
         unique_together = ('user', 'stock')
 
+# Transaction (user, stock, type, quantity, price)
 class Transaction(models.Model):
     TYPES = (
         ('BUY', 'Buy'),
@@ -53,53 +53,23 @@ class Transaction(models.Model):
     price = models.DecimalField(max_digits=12, decimal_places=2)
     timestamp = models.DateTimeField(auto_now_add=True)
 
-class Event(models.Model):
-    title = models.CharField(max_length=200)
-    description = models.TextField(default="")
-    stock = models.ForeignKey(Stock, on_delete=models.CASCADE)
-    impact_percentage = models.FloatField(default=0)
-    scheduled_time = models.DateTimeField()
-    is_executed = models.BooleanField(default=False)
+from django.utils import timezone
 
-    def __str__(self):
-        return self.title
-
-class News(models.Model):
-    title = models.CharField(max_length=200)
-    content = models.TextField()
-    timestamp = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return self.title
-
-class Watchlist(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    stock = models.ForeignKey(Stock, on_delete=models.CASCADE)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        unique_together = ('user', 'stock')
-
-class Alert(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    stock = models.ForeignKey(Stock, on_delete=models.CASCADE)
-    target_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
-    condition = models.CharField(max_length=10, choices=(('ABOVE', 'Above'), ('BELOW', 'Below')), default='ABOVE')
-    is_triggered = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-class P2PListing(models.Model):
-    seller = models.ForeignKey(User, on_delete=models.CASCADE, related_name='listings')
+# Listing (P2P: user, stock, quantity, price)
+class Listing(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='listings')
     stock = models.ForeignKey(Stock, on_delete=models.CASCADE)
     quantity = models.IntegerField()
-    price_per_share = models.DecimalField(max_digits=12, decimal_places=2)
+    price = models.DecimalField(max_digits=12, decimal_places=2)
     is_sold = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(default=timezone.now)
 
-class MarketControl(models.Model):
-    is_paused = models.BooleanField(default=False)
-    is_crashed = models.BooleanField(default=False)
-    is_skyrocketing = models.BooleanField(default=False)
-
-    def __str__(self):
-        return f"Market Control: Paused={self.is_paused}"
+# Event (stock, impact %, duration/scheduled_time)
+class Event(models.Model):
+    stock = models.ForeignKey(Stock, on_delete=models.CASCADE)
+    title = models.CharField(max_length=100)
+    impact_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    duration_minutes = models.IntegerField(default=60)
+    scheduled_time = models.DateTimeField()
+    is_executed = models.BooleanField(default=False)
+    created_at = models.DateTimeField(default=timezone.now)

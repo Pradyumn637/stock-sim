@@ -1,51 +1,33 @@
 from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
-    RegisterView, login_view, ProfileDetail, MarketListing, BuyStock, SellStock, PortfolioList,
-    TransactionList, NewsList, WatchlistList, ToggleWatchlist, AlertList, P2PListingList,
-    BuyP2PListing, ToggleAdmin, UserList, StockUpdateDelete, admin_events, AlertDelete,
-    P2PListingDelete, EventDelete, AdminLeaderboard, PauseMarket, ResumeMarket,
-    ResetMarket, CrashMarket, SkyrocketMarket
+    RegisterView, login_view, CurrentUserView, StockListView, 
+    StockUpdateView, BuyStockView, SellStockView, PortfolioListView,
+    ListingView, BuyListingView, LeaderboardView, EventView, TransactionHistoryView
 )
 
 urlpatterns = [
-    # ✅ Auth (FIXED)
-    path('signup/', RegisterView.as_view(), name='signup'),
+    # Auth
+    path('register/', RegisterView.as_view(), name='register'),
     path('login/', login_view, name='login'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('user/', CurrentUserView.as_view(), name='user'),
 
-    # Core Endpoints
-    path('stocks/', MarketListing.as_view(), name='stocks'),
-    path('buy/', BuyStock.as_view(), name='buy'),
-    path('sell/', SellStock.as_view(), name='sell'),
-    path('portfolio/', PortfolioList.as_view(), name='portfolio'),
+    # Stocks
+    path('stocks/', StockListView.as_view(), name='stocks'),
+    path('stocks/<int:pk>/update/', StockUpdateView.as_view(), name='stock_update'),
 
-    # Other features
-    path('profile/', ProfileDetail.as_view(), name='profile'),
-    path('transactions/', TransactionList.as_view(), name='transactions'),
-    path('news/', NewsList.as_view(), name='news'),
-    path('watchlist/', WatchlistList.as_view(), name='watchlist'),
-    path('watchlist/toggle/', ToggleWatchlist.as_view(), name='toggle_watchlist'),
-    path('alerts/', AlertList.as_view(), name='alerts'),
-    path('alerts/<int:pk>/', AlertDelete.as_view(), name='alert_delete'),
+    # Trading
+    path('buy/', BuyStockView.as_view(), name='buy'),
+    path('sell/', SellStockView.as_view(), name='sell'),
+    path('portfolio/', PortfolioListView.as_view(), name='portfolio'),
+    path('transactions/', TransactionHistoryView.as_view(), name='transactions'),
 
     # P2P
-    path('p2p/', P2PListingList.as_view(), name='p2p_listings'),
-    path('p2p/buy/<int:pk>/', BuyP2PListing.as_view(), name='p2p_buy'),
-    path('p2p/<int:pk>/', P2PListingDelete.as_view(), name='p2p_delete'),
+    path('p2p/', ListingView.as_view(), name='p2p_listings'),
+    path('p2p/<int:pk>/buy/', BuyListingView.as_view(), name='p2p_buy'),
 
-    # Admin
-    path('admin/users/', UserList.as_view(), name='admin_users'),
-    path('admin/toggle-admin/', ToggleAdmin.as_view(), name='admin_toggle'),
-    path('admin/events/', admin_events, name='admin_events'),
-    path('admin/events/<int:pk>/', EventDelete.as_view(), name='admin_event_delete'),
-    path('admin/stocks/<int:pk>/', StockUpdateDelete.as_view(), name='admin_stock_update_delete'),
-
-    # Advanced Admin
-    path('admin/leaderboard/', AdminLeaderboard.as_view(), name='admin_leaderboard'),
-    path('admin/market/pause/', PauseMarket.as_view(), name='admin_market_pause'),
-    path('admin/market/resume/', ResumeMarket.as_view(), name='admin_market_resume'),
-    path('admin/market/reset/', ResetMarket.as_view(), name='admin_market_reset'),
-    path('admin/market/crash/', CrashMarket.as_view(), name='admin_market_crash'),
-    path('admin/market/skyrocket/', SkyrocketMarket.as_view(), name='admin_market_skyrocket'),
+    # Features
+    path('leaderboard/', LeaderboardView.as_view(), name='leaderboard'),
+    path('events/', EventView.as_view(), name='events'),
 ]

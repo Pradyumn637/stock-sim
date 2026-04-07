@@ -1,12 +1,11 @@
 import axios from 'axios';
 
 const API = axios.create({
-  baseURL: 'https://stock-sim-b0o8.onrender.com/',
+  baseURL: import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/',
 });
 
 API.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
-  console.log("TOKEN:", token);
   if (token) {
     config.headers['Authorization'] = `Bearer ${token}`;
   }

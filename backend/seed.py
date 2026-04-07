@@ -8,7 +8,7 @@ from django.utils import timezone
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'server.settings')
 django.setup()
 
-from api.models import Stock, News, User, Profile
+from api.models import Stock, User, Profile
 
 def seed():
     stocks_data = [
@@ -25,7 +25,7 @@ def seed():
     for data in stocks_data:
         Stock.objects.get_or_create(symbol=data['symbol'], defaults={'name': data['name'], 'price': Decimal(data['price'])})
 
-    News.objects.get_or_create(title="Market Open", content="The market is now open for trading!")
+    print("Stocks seeded.")
     
     # Create admin
     if not User.objects.filter(username='admin').exists():

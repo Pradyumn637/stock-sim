@@ -1,95 +1,87 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import API from '../api';
 import { useAuth } from '../AuthContext';
-import api from '../api';
 
 const Dashboard = () => {
-  const { user, fetchUser } = useAuth();
-  const [portfolio, setPortfolio] = useState([]);
-  const [news, setNews] = useState([]);
-  const [pVal, setPVal] = useState(0);
+    const { user } = useAuth();
+    const [stats, setStats] = useState({ balance: 0, portfolio_value: 0, total_value: 0 });
+    const [transactions, setTransactions] = useState([]);
 
-  const loadData = async () => {
-    try {
-      const [pRes, nRes] = await Promise.all([
-        api.get('portfolio/'),
-        api.get('news/')
-      ]);
-      setPortfolio(pRes.data);
-      setNews(nRes.data);
-      
-      const total = pRes.data.reduce((acc, item) => acc + (item.quantity * item.current_price), 0);
-      setPVal(total);
-      fetchUser();
-    } catch (e) {
-      console.error(e);
-    }
-  };
+    useEffect(() => {
+        const fetchData = async () => {
+            try {
+                const [userRes, portRes, transRes] = await Promise.all([
+                    API.get('user/'),
+                    API.get('portfolio/'),
+                    API.get('transactions/')
+                ]);
 
-  useEffect(() => {
-    loadData();
-    const timer = setInterval(loadData, 5000); // Polling every 5s
-    return () => clearInterval(timer);
-  }, []);
+                const portValue = portRes.data.reduce((acc, p) => 
+                    acc + (parseFloat(p.quantity) * parseFloat(p.current_price)), 0);
+                
+                setStats({
+                    balance: parseFloat(userRes.data.balance),
+                    portfolio_value: portValue,
+                    total_value: parseFloat(userRes.data.balance) + portValue
+                });
+                setTransactions(transRes.data.slice(0, 5));
+            } catch (error) {
+                console.error("Dashboard data fetch failed", error);
+            }
+        };
 
-  const totalWealth = parseFloat(user?.balance || 0) + pVal;
-  const initialBalance = 100000;
-  const pl = totalWealth - initialBalance;
+        fetchData();
+        const poll = setInterval(fetchData, 10000); // Polling every 10s
+        return () => clearInterval(poll);
+    }, []);
 
-  return (
-    <div>
-      <h1>Welcome, {user?.username}!</h1>
-      <div className="dashboard-stats">
-        <div className="stat-card">
-          <div className="label">Available Balance</div>
-          <div className="value">${parseFloat(user?.balance || 0).toLocaleString()}</div>
+    const StatCard = ({ title, value, color }) => (
+        <div className="card">
+            <h3 style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px' }}>{title}</h3>
+            <p style={{ fontSize: '2rem', fontWeight: '800', color, margin: '0.5rem 0' }}>${value.toLocaleString()}</p>
         </div>
-        <div className="stat-card">
-          <div className="label">Portfolio Value</div>
-          <div className="value">${pVal.toLocaleString()}</div>
-        </div>
-        <div className="stat-card">
-          <div className="label">Net Profit/Loss</div>
-          <div className={`value ${pl >= 0 ? 'price-up' : 'price-down'}`}>
-            {pl >= 0 ? '+' : ''}${pl.toLocaleString()}
-          </div>
-        </div>
-      </div>
+    );
 
-      <div style={{display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '32px'}}>
-        <div>
-          <h3>My Portfolio</h3>
-          <table>
-            <thead>
-              <tr><th>Symbol</th><th>Quantity</th><th>Price</th><th>Value</th></tr>
-            </thead>
-            <tbody>
-              {portfolio.map(item => (
-                <tr key={item.id}>
-                  <td>{item.symbol}</td>
-                  <td>{item.quantity}</td>
-                  <td>${item.current_price}</td>
-                  <td>${(item.quantity * item.current_price).toLocaleString()}</td>
-                </tr>
-              ))}
-              {portfolio.length === 0 && <tr><td colSpan="4">No holdings.</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </div>
+    return (
+        <div className="dashboard">
+            <h1>Welcome back, {user?.username}</h1>
+            <p style={{ marginBottom: '2rem' }}>Here's what's happening with your portfolio today.</p>
 
-      <div className="news-footer">
-        <h3>Market News</h3>
-        {news.map(n => (
-          <div key={n.id} style={{marginBottom: 16, pb: 16, borderBottom: '1px solid #eee'}}>
-            <strong>{n.title}</strong>
-            <p style={{fontSize: 14, color: '#666', margin: '4px 0'}}>{n.content}</p>
-            <small style={{color: '#999'}}>{new Date(n.timestamp).toLocaleString()}</small>
-          </div>
-        ))}
-        {news.length === 0 && <p>No news yet.</p>}
-      </div>
-    </div>
-  );
+            <div className="stat-grid">
+                <StatCard title="Wallet Balance" value={stats.balance} color="var(--accent-primary)" />
+                <StatCard title="Portfolio Value" value={stats.portfolio_value} color="var(--success)" />
+                <StatCard title="Total Assets" value={stats.total_value} color="#fff" />
+            </div>
+
+            <div className="card">
+                <h2 style={{ marginBottom: '1.5rem' }}>Recent Activity</h2>
+                <table className="data-table">
+                    <thead>
+                        <tr>
+                            <th>SYMBOL</th>
+                            <th>TYPE</th>
+                            <th>QTY</th>
+                            <th>PRICE</th>
+                            <th>DATE</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {transactions.map(t => (
+                            <tr key={t.id}>
+                                <td><b>{t.symbol}</b></td>
+                                <td style={{ color: t.type.includes('BUY') ? 'var(--success)' : 'var(--danger)' }}>{t.type}</td>
+                                <td>{t.quantity}</td>
+                                <td>${t.price}</td>
+                                <td style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                                    {new Date(t.timestamp).toLocaleDateString()}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
 };
 
 export default Dashboard;
