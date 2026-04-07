@@ -1,24 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import API from '../api';
+import { useAuth } from '../AuthContext';
+import { Tag, Users, Trash2, ShoppingCart, Info } from 'lucide-react';
 
 const P2P = () => {
+    const { user } = useAuth();
     const [listings, setListings] = useState([]);
     const [holdings, setholdings] = useState([]);
-    const [stocks, setStocks] = useState([]);
-    const [newListing, setNewListing] = useState({ stock: '', quantity: 0, price: 0 });
-    const [message, setMessage] = useState(null);
+    const [form, setForm] = useState({ stock: '', quantity: 1, price: 0 });
     const [loading, setLoading] = useState(false);
+    const [message, setMessage] = useState(null);
 
     const fetchData = async () => {
         try {
-            const [listRes, portRes, stockRes] = await Promise.all([
+            const [listRes, portRes] = await Promise.all([
                 API.get('p2p/'),
-                API.get('portfolio/'),
-                API.get('stocks/')
+                API.get('portfolio/')
             ]);
             setListings(listRes.data);
             setholdings(portRes.data);
-            setStocks(stockRes.data);
         } catch (err) { console.error(err); }
     };
 
@@ -32,10 +32,10 @@ const P2P = () => {
         e.preventDefault();
         setLoading(true);
         try {
-            const res = await API.post('p2p/', newListing);
+            await API.post('p2p/', form);
             setMessage({ text: "Listing created successfully", type: 'success' });
             fetchData();
-        } catch (err) { setMessage({ text: err.response?.data?.error || "Failed to create listing", type: 'danger' }); }
+        } catch (err) { setMessage({ text: err.response?.data?.error || "Creation failed", type: 'danger' }); }
         finally { setLoading(false); }
     };
 
@@ -43,53 +43,70 @@ const P2P = () => {
         setLoading(true);
         try {
             await API.post(`p2p/${id}/buy/`);
-            setMessage({ text: "Listing bought successfully", type: 'success' });
+            setMessage({ text: "Listing purchased!", type: 'success' });
             fetchData();
-        } catch (err) { setMessage({ text: err.response?.data?.error || "Failed to buy listing", type: 'danger' }); }
+        } catch (err) { setMessage({ text: err.response?.data?.error || "Purchase failed", type: 'danger' }); }
         finally { setLoading(false); }
     };
 
-    return (
-        <div className="marketplace">
-            <h1 style={{ marginBottom: '1.5rem' }}>P2P Marketplace</h1>
-            {message && <div className={`card ${message.type}`} style={{ padding: '1rem', marginBottom: '1rem' }}><b>{message.text}</b></div>}
+    const deleteListing = async (id) => {
+        try {
+            await API.delete(`p2p/${id}/`);
+            fetchData();
+        } catch (err) { console.error(err); }
+    };
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
-                <div className="card">
-                    <h2>Create Listing</h2>
-                    <form onSubmit={createListing} style={{ marginTop: '1.5rem' }}>
-                        <label>Select Stock</label>
-                        <select value={newListing.stock} onChange={e => setNewListing({...newListing, stock: e.target.value})} required>
+    return (
+        <div className="p2p-view">
+            <h1 style={{ marginBottom: '1.5rem', fontWeight: 800 }}>P2P Marketplace</h1>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '2rem' }}>
+                <div className="card shadow-md">
+                    <h2 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: '2rem' }}>Sell Assets</h2>
+                    <form onSubmit={createListing}>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>SELECT ASSET</label>
+                        <select value={form.stock} onChange={e => setForm({...form, stock: e.target.value})} required>
                             <option value="">-- Choose Stock --</option>
-                            {holdings.map(h => <option key={h.id} value={h.stock}>{h.symbol} ({h.quantity} available)</option>)}
+                            {holdings.map(h => <option key={h.id} value={h.stock}>{h.symbol} ({h.quantity} units)</option>)}
                         </select>
-                        <label>Quantity</label>
-                        <input type="number" value={newListing.quantity} onChange={e => setNewListing({...newListing, quantity: e.target.value})} required />
-                        <label>Price per share</label>
-                        <input type="number" value={newListing.price} onChange={e => setNewListing({...newListing, price: e.target.value})} required />
-                        <button type="submit" className="btn btn-primary" disabled={loading} style={{ width: '100%', marginTop: '1rem' }}>CREATE LISTING</button>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>QUANTITY</label>
+                        <input type="number" value={form.quantity} onChange={e => setForm({...form, quantity: e.target.value})} min="1" required />
+                        <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>PRICE PER UNIT</label>
+                        <input type="number" value={form.price} onChange={e => setForm({...form, price: e.target.value})} step="0.01" required />
+                        <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '1.5rem' }} disabled={loading}>CREATE LISTING</button>
                     </form>
                 </div>
 
-                <div className="listings-grid">
-                    {listings.map(l => (
-                        <div key={l.id} className="card shadow-sm" style={{ marginBottom: '1rem', borderLeft: '4px solid var(--accent-primary)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <div>
-                                    <h3 style={{ fontSize: '1.2rem', marginBottom: '0.25rem' }}>{l.symbol}</h3>
-                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Seller: <b>{l.seller_username}</b></p>
+                <div>
+                    <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))' }}>
+                        {listings.map(l => (
+                            <div key={l.id} className="card shadow-sm" style={{ borderLeft: '4px solid var(--accent-primary)' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+                                    <div>
+                                        <h3 style={{ fontSize: '1.1rem', fontWeight: 800 }}>{l.symbol}</h3>
+                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Seller: <b>@{l.seller_username}</b></p>
+                                    </div>
+                                    <div style={{ textAlign: 'right' }}>
+                                        <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--success)' }}>${parseFloat(l.price).toFixed(2)}</h3>
+                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>UNIT PRICE</p>
+                                    </div>
                                 </div>
-                                <div style={{ textAlign: 'right' }}>
-                                    <h3 style={{ color: 'var(--success)', marginBottom: '0.25rem' }}>${l.price}</h3>
-                                    <p style={{ fontSize: '0.85rem' }}>Qty: <b>{l.quantity}</b></p>
+                                <div style={{ padding: '0.75rem', background: '#f8fafc', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+                                    <Info size={16} color="var(--text-secondary)" />
+                                    <p style={{ fontSize: '0.85rem' }}>Stock Quantity: <b>{l.quantity} units</b></p>
                                 </div>
+                                {l.seller_username === user?.username ? (
+                                    <button onClick={() => deleteListing(l.id)} className="btn" style={{ width: '100%', background: '#fee2e2', color: '#991b1b', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                                        <Trash2 size={16} /> DELETE LISTING
+                                    </button>
+                                ) : (
+                                    <button onClick={() => buyListing(l.id)} disabled={loading} className="btn btn-primary" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                                        <ShoppingCart size={16} /> BUY NOW
+                                    </button>
+                                )}
                             </div>
-                            <button onClick={() => buyListing(l.id)} disabled={loading} className="btn" style={{ width: '100%', marginTop: '1rem', background: 'var(--bg-tertiary)', color: '#fff' }}>
-                                BUY NOW
-                            </button>
-                        </div>
-                    ))}
-                    {listings.length === 0 && <p style={{ textAlign: 'center', color: 'var(--text-muted)' }}>No listings available.</p>}
+                        ))}
+                    </div>
                 </div>
             </div>
         </div>

@@ -2,8 +2,10 @@ from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     RegisterView, login_view, CurrentUserView, StockListView, 
-    StockUpdateView, BuyStockView, SellStockView, PortfolioListView,
-    ListingView, BuyListingView, LeaderboardView, EventView, TransactionHistoryView
+    StockManageView, BuyStockView, SellStockView, PortfolioListView,
+    ListingView, BuyListingView, LeaderboardView, EventView, TransactionHistoryView,
+    NewsView, WatchlistView, WatchlistDeleteView, AlertView, AlertDeleteView,
+    MarketControlView, StockCandleView, ListingDeleteView
 )
 
 urlpatterns = [
@@ -15,7 +17,8 @@ urlpatterns = [
 
     # Stocks
     path('stocks/', StockListView.as_view(), name='stocks'),
-    path('stocks/<int:pk>/update/', StockUpdateView.as_view(), name='stock_update'),
+    path('stocks/<int:pk>/', StockManageView.as_view(), name='stock_manage'),
+    path('stocks/<int:pk>/candles/', StockCandleView.as_view(), name='stock_candles'),
 
     # Trading
     path('buy/', BuyStockView.as_view(), name='buy'),
@@ -26,8 +29,17 @@ urlpatterns = [
     # P2P
     path('p2p/', ListingView.as_view(), name='p2p_listings'),
     path('p2p/<int:pk>/buy/', BuyListingView.as_view(), name='p2p_buy'),
+    path('p2p/<int:pk>/', ListingDeleteView.as_view(), name='p2p_delete'),
 
     # Features
     path('leaderboard/', LeaderboardView.as_view(), name='leaderboard'),
     path('events/', EventView.as_view(), name='events'),
+    path('news/', NewsView.as_view(), name='news'),
+    path('watchlist/', WatchlistView.as_view(), name='watchlist'),
+    path('watchlist/<int:pk>/', WatchlistDeleteView.as_view(), name='watchlist_delete'),
+    path('alerts/', AlertView.as_view(), name='alerts'),
+    path('alerts/<int:pk>/', AlertDeleteView.as_view(), name='alert_delete'),
+
+    # Market Controls
+    path('market/control/<str:action>/', MarketControlView.as_view(), name='market_control'),
 ]

@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Profile, Stock, Portfolio, Transaction, Listing, Event
+from .models import Profile, Stock, Portfolio, Transaction, Listing, Event, News, Watchlist, Alert
 
 class UserSerializer(serializers.ModelSerializer):
     balance = serializers.DecimalField(source='profile.balance', max_digits=12, decimal_places=2, read_only=True)
@@ -48,4 +48,25 @@ class EventSerializer(serializers.ModelSerializer):
     stock_symbol = serializers.CharField(source='stock.symbol', read_only=True)
     class Meta:
         model = Event
+        fields = '__all__'
+
+# --- RESTORED SERIALIZERS FOR FINTECH UI ---
+
+class NewsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = News
+        fields = '__all__'
+
+class WatchlistSerializer(serializers.ModelSerializer):
+    symbol = serializers.CharField(source='stock.symbol', read_only=True)
+    name = serializers.CharField(source='stock.name', read_only=True)
+    price = serializers.DecimalField(source='stock.price', max_digits=12, decimal_places=2, read_only=True)
+    class Meta:
+        model = Watchlist
+        fields = '__all__'
+
+class AlertSerializer(serializers.ModelSerializer):
+    symbol = serializers.CharField(source='stock.symbol', read_only=True)
+    class Meta:
+        model = Alert
         fields = '__all__'

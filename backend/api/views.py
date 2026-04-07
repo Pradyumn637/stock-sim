@@ -7,10 +7,13 @@ from django.contrib.auth import authenticate
 from django.db import transaction as db_transaction
 from django.shortcuts import get_object_or_404
 from decimal import Decimal
-from .models import Profile, Stock, Portfolio, Transaction, Listing, Event
+import random
+from datetime import datetime, timedelta
+from .models import Profile, Stock, Portfolio, Transaction, Listing, Event, News, Watchlist, Alert, MarketControl
 from .serializers import (
     RegisterSerializer, UserSerializer, StockSerializer, 
-    PortfolioSerializer, TransactionSerializer, ListingSerializer, EventSerializer
+    PortfolioSerializer, TransactionSerializer, ListingSerializer, 
+    EventSerializer, NewsSerializer, WatchlistSerializer, AlertSerializer
 )
 
 # --- AUTH ---
@@ -46,21 +49,45 @@ class StockListView(generics.ListAPIView):
     serializer_class = StockSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-# Admin can update prices
-class StockUpdateView(views.APIView):
+# Admin can update/manage stocks
+class StockManageView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Stock.objects.all()
+    serializer_class = StockSerializer
     permission_classes = [permissions.IsAdminUser]
-    def patch(self, request, pk):
+
+class StockCandleView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    def get(self, request, pk):
         stock = get_object_or_404(Stock, id=pk)
-        price = request.data.get('price')
-        if price is not None:
-            stock.price = Decimal(str(price))
-            stock.save()
-        return Response(StockSerializer(stock).data)
+        data = []
+        base_price = float(stock.price)
+        now = datetime.now()
+        
+        for i in range(30): # Generate 30 days of data
+            day = (now - timedelta(days=30-i)).strftime('%Y-%m-%d')
+            noise = random.uniform(-0.02, 0.02)
+            c = base_price * (1 + noise)
+            o = c * (1 + random.uniform(-0.01, 0.01))
+            h = max(o, c) * (1 + random.uniform(0, 0.01))
+            l = min(o, c) * (1 - random.uniform(0, 0.01))
+            data.append({
+                "time": day,
+                "open": round(o, 2),
+                "high": round(h, 2),
+                "low": round(l, 2),
+                "close": round(c, 2)
+            })
+            base_price = c # Walk forward
+            
+        return Response(data)
 
 # --- TRADING ---
 class BuyStockView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
     def post(self, request):
+        if MarketControl.objects.filter(is_paused=True).exists():
+            return Response({'error': 'Market is currently paused'}, status=403)
+            
         stock_id = request.data.get('stock_id')
         qty = int(request.data.get('quantity', 0))
         if qty <= 0: return Response({'error': 'Invalid quantity'}, status=400)
@@ -89,6 +116,9 @@ class BuyStockView(views.APIView):
 class SellStockView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
     def post(self, request):
+        if MarketControl.objects.filter(is_paused=True).exists():
+            return Response({'error': 'Market is currently paused'}, status=403)
+
         stock_id = request.data.get('stock_id')
         qty = int(request.data.get('quantity', 0))
         if qty <= 0: return Response({'error': 'Invalid quantity'}, status=400)
@@ -124,52 +154,43 @@ class ListingView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
     def get_queryset(self):
         return Listing.objects.filter(is_sold=False)
-    
     def perform_create(self, serializer):
-        stock_id = self.request.data.get('stock')
+        stock_id = self.request.data.get('api_stock') or self.request.data.get('stock')
         qty = int(self.request.data.get('quantity'))
         stock = get_object_or_404(Stock, id=stock_id)
-        
         with db_transaction.atomic():
             portfolio = get_object_or_404(Portfolio, user=self.request.user, stock=stock)
-            if portfolio.quantity < qty:
-                raise Exception("Insufficient stocks for listing")
+            if portfolio.quantity < qty: raise Exception("Insufficient stocks for listing")
             portfolio.quantity -= qty
             portfolio.save()
-            serializer.save(user=self.request.user)
+            serializer.save(user=self.request.user, stock=stock)
 
 class BuyListingView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
     def post(self, request, pk):
         listing = get_object_or_404(Listing, id=pk, is_sold=False)
-        if listing.user == request.user:
-            return Response({'error': 'Cannot buy own listing'}, status=400)
-        
+        if listing.user == request.user: return Response({'error': 'Cannot buy own listing'}, status=400)
         total_price = listing.price * Decimal(listing.quantity)
-        
         with db_transaction.atomic():
             buyer_profile = request.user.profile
-            if buyer_profile.balance < total_price:
-                return Response({'error': 'Insufficient funds'}, status=400)
-            
+            if buyer_profile.balance < total_price: return Response({'error': 'Insufficient funds'}, status=400)
             buyer_profile.balance -= total_price
             buyer_profile.save()
-
             seller_profile = listing.user.profile
             seller_profile.balance += total_price
             seller_profile.save()
-
-            # Buyer gets stocks
             port, _ = Portfolio.objects.get_or_create(user=request.user, stock=listing.stock)
             port.quantity += listing.quantity
             port.save()
-
             listing.is_sold = True
             listing.save()
-
             Transaction.objects.create(user=request.user, stock=listing.stock, type='P2P_BUY', quantity=listing.quantity, price=listing.price)
             Transaction.objects.create(user=listing.user, stock=listing.stock, type='P2P_SELL', quantity=listing.quantity, price=listing.price)
         return Response({'message': 'Listing bought successfully'})
+
+class ListingDeleteView(generics.DestroyAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    def get_queryset(self): return Listing.objects.filter(user=self.request.user)
 
 # --- LEADERBOARD ---
 class LeaderboardView(views.APIView):
@@ -180,16 +201,42 @@ class LeaderboardView(views.APIView):
         for user in users:
             balance = user.profile.balance
             portfolio_val = Decimal(0)
-            for p in user.portfolios.all():
-                portfolio_val += Decimal(p.quantity) * p.stock.price
+            for p in user.portfolios.all(): portfolio_val += Decimal(p.quantity) * p.stock.price
             data.append({
                 'username': user.username,
+                'balance': balance,
+                'portfolio': portfolio_val,
                 'total_value': balance + portfolio_val
             })
         data.sort(key=lambda x: x['total_value'], reverse=True)
         return Response(data[:10])
 
-# --- ADMIN EVENTS ---
+# --- ADMIN / FEATURES ---
+class NewsView(generics.ListCreateAPIView):
+    queryset = News.objects.all().order_by('-timestamp')
+    serializer_class = NewsSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+class WatchlistView(generics.ListCreateAPIView):
+    serializer_class = WatchlistSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    def get_queryset(self): return Watchlist.objects.filter(user=self.request.user)
+    def perform_create(self, serializer): serializer.save(user=self.request.user)
+
+class WatchlistDeleteView(generics.DestroyAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    def get_queryset(self): return Watchlist.objects.filter(user=self.request.user)
+
+class AlertView(generics.ListCreateAPIView):
+    serializer_class = AlertSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    def get_queryset(self): return Alert.objects.filter(user=self.request.user)
+    def perform_create(self, serializer): serializer.save(user=self.request.user)
+
+class AlertDeleteView(generics.DestroyAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    def get_queryset(self): return Alert.objects.filter(user=self.request.user)
+
 class EventView(generics.ListCreateAPIView):
     queryset = Event.objects.all().order_by('-id')
     serializer_class = EventSerializer
@@ -198,5 +245,32 @@ class EventView(generics.ListCreateAPIView):
 class TransactionHistoryView(generics.ListAPIView):
     serializer_class = TransactionSerializer
     permission_classes = [permissions.IsAuthenticated]
-    def get_queryset(self):
-        return Transaction.objects.filter(user=self.request.user).order_by('-timestamp')
+    def get_queryset(self): return Transaction.objects.filter(user=self.request.user).order_by('-timestamp')
+
+# --- MARKET CONTROLS ---
+class MarketControlView(views.APIView):
+    permission_classes = [permissions.IsAdminUser]
+    def post(self, request, action):
+        control, _ = MarketControl.objects.get_or_create(id=1)
+        if action == 'pause': control.is_paused = True
+        elif action == 'resume': control.is_paused = False
+        elif action == 'crash':
+            for s in Stock.objects.all():
+                s.change_percent = Decimal('-40.00')
+                s.price = s.price * Decimal('0.6')
+                s.save()
+            News.objects.create(title="Market Crash!", content="Stocks have plunged 40% across the board!", is_breaking=True)
+        elif action == 'skyrocket':
+            for s in Stock.objects.all():
+                s.change_percent = Decimal('50.00')
+                s.price = s.price * Decimal('1.5')
+                s.save()
+            News.objects.create(title="Market Boom!", content="Stocks are skyrocketing! 50% gains everywhere!", is_breaking=True)
+        elif action == 'reset':
+            Profile.objects.all().update(balance=Decimal('50000.00'))
+            Portfolio.objects.all().delete()
+            Transaction.objects.all().delete()
+            Listing.objects.all().delete()
+            control.last_reset = datetime.now()
+        control.save()
+        return Response({'message': f'Market {action} executed'})

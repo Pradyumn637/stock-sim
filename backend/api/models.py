@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+from django.utils import timezone
 from decimal import Decimal
 
 # Profile - Extending User with Balance
@@ -53,8 +54,6 @@ class Transaction(models.Model):
     price = models.DecimalField(max_digits=12, decimal_places=2)
     timestamp = models.DateTimeField(auto_now_add=True)
 
-from django.utils import timezone
-
 # Listing (P2P: user, stock, quantity, price)
 class Listing(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='listings')
@@ -68,8 +67,38 @@ class Listing(models.Model):
 class Event(models.Model):
     stock = models.ForeignKey(Stock, on_delete=models.CASCADE)
     title = models.CharField(max_length=100)
+    description = models.TextField(default="")
     impact_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     duration_minutes = models.IntegerField(default=60)
     scheduled_time = models.DateTimeField()
     is_executed = models.BooleanField(default=False)
     created_at = models.DateTimeField(default=timezone.now)
+
+# --- RESTORED MODELS FOR FINTECH UI ---
+
+class News(models.Model):
+    title = models.CharField(max_length=200)
+    content = models.TextField()
+    is_breaking = models.BooleanField(default=False)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+class Watchlist(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    stock = models.ForeignKey(Stock, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    class Meta:
+        unique_together = ('user', 'stock')
+
+class Alert(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    stock = models.ForeignKey(Stock, on_delete=models.CASCADE)
+    target_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    condition = models.CharField(max_length=10, choices=(('ABOVE', 'Above'), ('BELOW', 'Below')), default='ABOVE')
+    is_triggered = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+class MarketControl(models.Model):
+    is_paused = models.BooleanField(default=False)
+    is_crashed = models.BooleanField(default=False)
+    is_skyrocketing = models.BooleanField(default=False)
+    last_reset = models.DateTimeField(auto_now=True)
