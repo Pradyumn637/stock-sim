@@ -5,6 +5,7 @@ const AdminPanel = () => {
   const [stocks, setStocks] = useState([]);
   const [users, setUsers] = useState([]);
   const [events, setEvents] = useState([]);
+  const [leaderboard, setLeaderboard] = useState([]);
   const [showAddStock, setShowAddStock] = useState(false);
   const [showAddEvent, setShowAddEvent] = useState(false);
   
@@ -16,17 +17,20 @@ const AdminPanel = () => {
   const loadAll = async () => {
     console.log("TOKEN:", localStorage.getItem("token"));
     try {
-      const [sRes, uRes, eRes] = await Promise.all([
+      const [sRes, uRes, eRes, lRes] = await Promise.all([
         api.get('stocks/'),
         api.get('admin/users/'),
-        api.get('admin/events/')
+        api.get('admin/events/'),
+        api.get('admin/leaderboard/')
       ]);
       setStocks(sRes.data || []);
       setUsers(uRes.data || []);
       setEvents(eRes.data || []);
+      setLeaderboard(lRes.data || []);
     } catch (e) {
       console.error("Error loading admin data:", e);
       setEvents([]);
+      setLeaderboard([]);
     }
   };
 
@@ -67,16 +71,59 @@ const AdminPanel = () => {
     loadAll();
   };
 
-  const deleteEvent = async (id) => {
-    await api.delete(`admin/events/${id}/`);
-    loadAll();
+  const marketControl = async (action) => {
+    if (['reset', 'crash', 'skyrocket'].includes(action)) {
+      if (!window.confirm(`Are you sure you want to ${action} the market?`)) return;
+    }
+    try {
+      await api.post(`admin/market/${action}/`);
+      loadAll();
+    } catch (e) {
+      alert(`Error: ${e.response?.data?.error || e.message}`);
+    }
   };
 
   if (!events) return <div style={{padding: 20}}>Loading...</div>;
+  if (!leaderboard) return <div style={{padding: 20}}>Loading...</div>;
 
   return (
     <div style={{paddingBottom: 100}}>
       <h1>Admin Dashboard</h1>
+
+      {/* Market Controls */}
+      <section style={{marginBottom: 40}}>
+        <h2>Market Control System</h2>
+        <div style={{display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap'}}>
+          <button onClick={() => marketControl('pause')} style={{background: '#f39c12', width: 140}}>Pause Market</button>
+          <button onClick={() => marketControl('resume')} style={{background: '#27ae60', width: 140}}>Resume Market</button>
+          <button onClick={() => marketControl('reset')} style={{background: '#34495e', width: 140}}>Reset Prices</button>
+          <button onClick={() => marketControl('crash')} style={{background: '#e74c3c', width: 140}}>Market Crash</button>
+          <button onClick={() => marketControl('skyrocket')} style={{background: '#9b59b6', width: 140}}>Skyrocket</button>
+        </div>
+      </section>
+
+      {/* Leaderboard Table */}
+      <section style={{marginBottom: 40}}>
+        <h2>Global Leaderboard</h2>
+        <table>
+          <thead>
+            <tr><th>Rank</th><th>Username</th><th>Balance</th><th>Portfolio Value</th><th>Profit</th></tr>
+          </thead>
+          <tbody>
+            {leaderboard.map((u, i) => (
+              <tr key={u.username}>
+                <td>{i + 1}</td>
+                <td>{u.username}</td>
+                <td>${u.balance.toLocaleString()}</td>
+                <td>${u.portfolio_value.toLocaleString()}</td>
+                <td className={u.total_profit >= 0 ? 'price-up' : 'price-down'}>
+                  ${u.total_profit.toLocaleString()}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
 
       {/* Stocks Management */}
       <section style={{marginBottom: 40}}>

@@ -6,7 +6,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from django.contrib.auth.models import User
 from django.db import transaction as db_transaction
-from .models import Stock, Profile, Portfolio, Transaction, Event, News, Watchlist, Alert, P2PListing
+from .models import Stock, Profile, Portfolio, Transaction, Event, News, Watchlist, Alert, P2PListing, MarketControl
 from .serializers import (
     RegisterSerializer, UserSerializer, StockSerializer, 
     PortfolioSerializer, TransactionSerializer, NewsSerializer, 
@@ -18,6 +18,13 @@ from rest_framework.decorators import api_view, authentication_classes, permissi
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 # Auth
+def is_market_paused():
+    try:
+        control = MarketControl.objects.filter(id=1).first()
+        return control.is_paused if control else False
+    except:
+        return False
+
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = RegisterSerializer
@@ -74,6 +81,8 @@ class StockUpdateDelete(views.APIView):
 class BuyStock(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
     def post(self, request):
+        if is_market_paused():
+            return Response({'error': 'Trading is currently paused'}, status=status.HTTP_403_FORBIDDEN)
         try:
             stock_id = request.data.get('stock_id')
             qty_raw = request.data.get('quantity', 1)
@@ -122,6 +131,8 @@ class BuyStock(views.APIView):
 class SellStock(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
     def post(self, request):
+        if is_market_paused():
+            return Response({'error': 'Trading is currently paused'}, status=status.HTTP_403_FORBIDDEN)
         try:
             stock_id = request.data.get('stock_id')
             qty_raw = request.data.get('quantity', 1)
@@ -325,6 +336,8 @@ class P2PListingList(generics.ListCreateAPIView):
         return P2PListing.objects.filter(is_sold=False)
     
     def post(self, request):
+        if is_market_paused():
+            return Response({'error': 'Trading is currently paused'}, status=status.HTTP_403_FORBIDDEN)
         try:
             stock_id = request.data.get('stock')
             qty_raw = request.data.get('quantity')
@@ -368,6 +381,8 @@ class P2PListingDelete(views.APIView):
 
 class BuyP2PListing(views.APIView):
     def post(self, request, pk):
+        if is_market_paused():
+            return Response({'error': 'Trading is currently paused'}, status=status.HTTP_403_FORBIDDEN)
         try:
             listing = get_object_or_404(P2PListing, pk=pk, is_sold=False)
             buy_qty = int(request.data.get('quantity', listing.quantity))
@@ -428,3 +443,104 @@ class ToggleAdmin(views.APIView):
         user.is_staff = not user.is_staff
         user.save()
         return Response({'is_admin': user.is_staff})
+
+# --- ADVANCED ADMIN FEATURES ---
+
+class AdminLeaderboard(views.APIView):
+    permission_classes = [permissions.IsAdminUser]
+    def get(self, request):
+        try:
+            users = User.objects.all()
+            leaderboard = []
+            initial_balance = Decimal('100000.00')
+            
+            for user in users:
+                profile, _ = Profile.objects.get_or_create(user=user)
+                balance = Decimal(str(profile.balance))
+                
+                # Portfolio value
+                portfolios = Portfolio.objects.filter(user=user)
+                portfolio_value = Decimal('0.00')
+                for p in portfolios:
+                    portfolio_value += Decimal(str(p.quantity)) * Decimal(str(p.stock.price))
+                
+                # total_profit = (portfolio_value + balance) - initial_balance
+                total_profit = (portfolio_value + balance) - initial_balance
+                
+                leaderboard.append({
+                    "username": user.username,
+                    "balance": float(balance),
+                    "portfolio_value": float(portfolio_value),
+                    "total_profit": float(total_profit)
+                })
+            
+            # Sort by highest profit
+            leaderboard.sort(key=lambda x: x['total_profit'], reverse=True)
+            return Response(leaderboard)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class PauseMarket(views.APIView):
+    permission_classes = [permissions.IsAdminUser]
+    def post(self, request):
+        try:
+            control, _ = MarketControl.objects.get_or_create(id=1)
+            control.is_paused = True
+            control.save()
+            return Response({"message": "Market paused"})
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class ResumeMarket(views.APIView):
+    permission_classes = [permissions.IsAdminUser]
+    def post(self, request):
+        try:
+            control, _ = MarketControl.objects.get_or_create(id=1)
+            control.is_paused = False
+            control.save()
+            return Response({"message": "Market resumed"})
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class ResetMarket(views.APIView):
+    permission_classes = [permissions.IsAdminUser]
+    def post(self, request):
+        try:
+            stocks = Stock.objects.all()
+            for stock in stocks:
+                stock.price = Decimal('100.00')  # Default initial value
+                stock.change_percent = Decimal('0.00')
+                stock.save()
+            return Response({"message": "All stock prices reset to 100.00"})
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class CrashMarket(views.APIView):
+    permission_classes = [permissions.IsAdminUser]
+    def post(self, request):
+        try:
+            stocks = Stock.objects.all()
+            for stock in stocks:
+                old_price = Decimal(str(stock.price))
+                stock.price = old_price * Decimal('0.80')
+                if old_price > 0:
+                    stock.change_percent = ((stock.price - old_price) / old_price) * Decimal('100')
+                stock.save()
+            return Response({"message": "Market crashed by 20%"})
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class SkyrocketMarket(views.APIView):
+    permission_classes = [permissions.IsAdminUser]
+    def post(self, request):
+        try:
+            stocks = Stock.objects.all()
+            for stock in stocks:
+                old_price = Decimal(str(stock.price))
+                stock.price = old_price * Decimal('1.20')
+                if old_price > 0:
+                    stock.change_percent = ((stock.price - old_price) / old_price) * Decimal('100')
+                stock.save()
+            return Response({"message": "Market skyrocketed by 20%"})
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

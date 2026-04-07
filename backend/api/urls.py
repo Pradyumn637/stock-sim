@@ -5,7 +5,8 @@ from rest_framework_simplejwt.views import (
 )
 from .views import (
     RegisterView, ProfileDetail, MarketListing, BuyStock, SellStock, PortfolioList,
-    TransactionList, NewsList, WatchlistList, ToggleWatchlist, AlertList, P2PListingList, BuyP2PListing, ToggleAdmin, UserList, StockUpdateDelete, admin_events, AlertDelete, P2PListingDelete, EventDelete
+    TransactionList, NewsList, WatchlistList, ToggleWatchlist, AlertList, P2PListingList, BuyP2PListing, ToggleAdmin, UserList, StockUpdateDelete, admin_events, AlertDelete, P2PListingDelete, EventDelete,
+    AdminLeaderboard, PauseMarket, ResumeMarket, ResetMarket, CrashMarket, SkyrocketMarket
 )
 
 urlpatterns = [
@@ -35,4 +36,12 @@ urlpatterns = [
     path('admin/stocks/<int:pk>/', StockUpdateDelete.as_view(), name='admin_stock_update_delete'),
     path('alerts/<int:pk>/', AlertDelete.as_view(), name='alert_delete'),
     path('p2p/<int:pk>/', P2PListingDelete.as_view(), name='p2p_delete'),
+
+    # Advanced Admin
+    path('admin/leaderboard/', AdminLeaderboard.as_view(), name='admin_leaderboard'),
+    path('admin/market/pause/', PauseMarket.as_view(), name='admin_market_pause'),
+    path('admin/market/resume/', ResumeMarket.as_view(), name='admin_market_resume'),
+    path('admin/market/reset/', ResetMarket.as_view(), name='admin_market_reset'),
+    path('admin/market/crash/', CrashMarket.as_view(), name='admin_market_crash'),
+    path('admin/market/skyrocket/', SkyrocketMarket.as_view(), name='admin_market_skyrocket'),
 ]

@@ -1,7 +1,7 @@
 import random
 from datetime import datetime
 from decimal import Decimal
-from .models import Event, Stock, News, Alert
+from .models import Event, Stock, News, Alert, MarketControl
 
 class EventTriggerMiddleware:
     def __init__(self, get_response):
@@ -9,6 +9,11 @@ class EventTriggerMiddleware:
 
     def __call__(self, request):
         try:
+            # Check if market is paused
+            control = MarketControl.objects.filter(id=1).first()
+            if control and control.is_paused:
+                return self.get_response(request)
+
             # 1. Check for scheduled events
             current_time = datetime.now()
             pending_events = Event.objects.filter(scheduled_time__lte=current_time, is_executed=False)

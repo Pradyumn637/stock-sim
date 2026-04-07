@@ -95,3 +95,11 @@ class P2PListing(models.Model):
     price_per_share = models.DecimalField(max_digits=12, decimal_places=2)
     is_sold = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
+
+class MarketControl(models.Model):
+    is_paused = models.BooleanField(default=False)
+    is_crashed = models.BooleanField(default=False)
+    is_skyrocketing = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"Market Control: Paused={self.is_paused}"
